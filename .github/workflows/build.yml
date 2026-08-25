@@ -57,7 +57,7 @@ jobs:
           --submodule module/SubModule.xml
           --output "$ZIP_PATH"
 
-      - name: Stage raw DLL
+      - name: Stage raw DLL artifact
         shell: bash
         run: cp "$DLL_PATH" RoTElephantThreadFix.dll
 
