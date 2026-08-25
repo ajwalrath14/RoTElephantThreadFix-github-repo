@@ -26,6 +26,9 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(packages["Bannerlord.ReferenceAssemblies"], "1.4.8.119303")
         self.assertEqual(packages["Lib.Harmony"], "2.4.2")
         self.assertIn("Microsoft.NETFramework.ReferenceAssemblies", packages)
+        self.assertEqual(root.findtext(".//Version"), "1.0.2")
+        self.assertEqual(root.findtext(".//AssemblyVersion"), "1.0.2.0")
+        self.assertEqual(root.findtext(".//FileVersion"), "1.0.2.0")
 
     def test_project_does_not_reference_rot_or_local_game_dlls(self):
         text = PROJECT.read_text(encoding="utf-8")
@@ -33,27 +36,33 @@ class RepoContractTests(unittest.TestCase):
         self.assertNotIn("TaleWorlds.MountAndBlade.dll", text)
         self.assertNotRegex(text, r"<Reference\s+Include=")
 
-    def test_submodule_identity_and_version_are_v101(self):
+    def test_submodule_identity_and_version_are_v102(self):
         root = ET.parse(SUBMODULE).getroot()
         self.assertEqual(root.find("./Id").attrib["value"], "RoTElephantThreadFix")
-        self.assertEqual(root.find("./Version").attrib["value"], "v1.0.1")
+        self.assertEqual(root.find("./Version").attrib["value"], "v1.0.2")
         dll = root.find(".//DLLName").attrib["value"]
         self.assertEqual(dll, "RoTElephantThreadFix.dll")
 
-    def test_existing_fix_still_uses_reflection_and_deferred_main_thread_flush(self):
+    def test_fix_uses_same_tick_post_agent_flush(self):
         text = SOURCE.read_text(encoding="utf-8")
         self.assertIn('AccessTools.TypeByName(\n                "RoT_Elephants.RoTElephantAgentComponent")', text)
-        self.assertIn('AccessTools.TypeByName(\n                "RoT_Elephants.RoTElephantMissionLogic")', text)
-        self.assertIn("QueueRegisterBlow", text)
-        self.assertIn("DeferredElephantBlows.Flush();", text)
+        self.assertIn("protected override void AfterAsyncTickTick(float dt)", text)
+        self.assertIn("public Mission SourceMission;", text)
+        self.assertIn("!victim.IsActive()", text)
+        self.assertIn("victim.RegisterBlow(pending.Blow, in pending.CollisionData);", text)
         self.assertIn("if (replacements != 1)", text)
+        self.assertNotIn("ElephantMissionMainThreadPatch", text)
+        self.assertNotIn("registerBlow.Invoke", text)
+        self.assertNotIn("OriginalRegisterBlow", text)
 
     def test_readme_documents_install_and_ci_artifacts(self):
         text = README.read_text(encoding="utf-8")
         for required in (
             "Bannerlord v1.4.8.119303",
             "RoTElephantThreadFix.dll",
-            "RoTElephantThreadFix_v1.0.1.zip",
+            "RoTElephantThreadFix_v1.0.2.zip",
+            "AfterAsyncTickTick",
+            "in-game",
             "Modules\\RoTElephantThreadFix",
             "GitHub Actions",
         ):
@@ -69,7 +78,9 @@ class RepoContractTests(unittest.TestCase):
             "scripts/package_module.py",
             "actions/upload-artifact@v4",
             "RoTElephantThreadFix.dll",
-            "RoTElephantThreadFix_v1.0.1.zip",
+            "tests/BehaviorHarness/BehaviorHarness.csproj",
+            "RoTElephantThreadFix_v1.0.2.zip",
+            "RoTElephantThreadFix-v1.0.2",
         ):
             self.assertIn(required, text)
         self.assertRegex(text, re.compile(r"configuration\s*:\s*Release", re.IGNORECASE))

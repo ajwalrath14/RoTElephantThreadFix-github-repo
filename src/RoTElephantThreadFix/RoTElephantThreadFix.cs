@@ -22,11 +22,17 @@ namespace RoTElephantThreadFix
             _harmony = new Harmony("austin.rot.elephant.threadfix");
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
         }
+
+        protected override void AfterAsyncTickTick(float dt)
+        {
+            DeferredElephantBlows.Flush();
+        }
     }
 
     internal struct PendingBlow
     {
         public Agent Victim;
+        public Mission SourceMission;
         public Blow Blow;
         public AttackCollisionData CollisionData;
     }
@@ -35,9 +41,6 @@ namespace RoTElephantThreadFix
     {
         private static readonly ConcurrentQueue<PendingBlow> Queue =
             new ConcurrentQueue<PendingBlow>();
-
-        // Set from the exact RegisterBlow call found in RoT's IL.
-        internal static MethodInfo OriginalRegisterBlow;
 
         // This static method deliberately has the same evaluation-stack shape
         // as: victim.RegisterBlow(blow, ref/in collisionData)
@@ -51,6 +54,7 @@ namespace RoTElephantThreadFix
 
             PendingBlow pending = new PendingBlow();
             pending.Victim = victim;
+            pending.SourceMission = victim.Mission;
             pending.Blow = blow;
             pending.CollisionData = collisionData;
 
@@ -59,36 +63,22 @@ namespace RoTElephantThreadFix
 
         public static void Flush()
         {
-            MethodInfo registerBlow = OriginalRegisterBlow;
-            if (registerBlow == null)
-                return;
-
+            Mission currentMission = Mission.Current;
             PendingBlow pending;
 
             while (Queue.TryDequeue(out pending))
             {
-                Agent victim = pending.Victim;
-                if (victim == null)
+                if (currentMission == null ||
+                    !ReferenceEquals(pending.SourceMission, currentMission))
                     continue;
 
-                object[] args = new object[]
-                {
-                    pending.Blow,
-                    pending.CollisionData
-                };
+                Agent victim = pending.Victim;
+                if (victim == null ||
+                    !ReferenceEquals(victim.Mission, currentMission) ||
+                    !victim.IsActive())
+                    continue;
 
-                try
-                {
-                    registerBlow.Invoke(victim, args);
-                }
-                catch (TargetInvocationException tie)
-                {
-                    // Do not hide a genuine Bannerlord/RoT failure.
-                    if (tie.InnerException != null)
-                        throw tie.InnerException;
-
-                    throw;
-                }
+                victim.RegisterBlow(pending.Blow, in pending.CollisionData);
             }
         }
     }
@@ -164,8 +154,6 @@ namespace RoTElephantThreadFix
                             "Found Agent.RegisterBlow in RoT elephant code, but its " +
                             "signature does not match the crash-dump version.");
 
-                    DeferredElephantBlows.OriginalRegisterBlow = called;
-
                     CodeInstruction patched =
                         new CodeInstruction(OpCodes.Call, replacement);
 
@@ -190,45 +178,4 @@ namespace RoTElephantThreadFix
         }
     }
 
-    [HarmonyPatch]
-    internal static class ElephantMissionMainThreadPatch
-    {
-        private static MethodBase TargetMethod()
-        {
-            Type type = AccessTools.TypeByName(
-                "RoT_Elephants.RoTElephantMissionLogic");
-
-            if (type == null)
-                throw new TypeLoadException(
-                    "RoT_Elephants.RoTElephantMissionLogic was not found.");
-
-            MethodInfo found = null;
-
-            foreach (MethodInfo method in AccessTools.GetDeclaredMethods(type))
-            {
-                if (method.Name == "OnMissionTick")
-                {
-                    if (found != null)
-                        throw new AmbiguousMatchException(
-                            "More than one OnMissionTick method exists on " +
-                            type.FullName + ".");
-
-                    found = method;
-                }
-            }
-
-            if (found == null)
-                throw new MissingMethodException(
-                    type.FullName,
-                    "OnMissionTick");
-
-            return found;
-        }
-
-        private static void Postfix()
-        {
-            // Runs from RoT's MissionLogic tick rather than Agent.TickParallel.
-            DeferredElephantBlows.Flush();
-        }
-    }
 }
