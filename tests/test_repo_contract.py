@@ -26,9 +26,9 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(packages["Bannerlord.ReferenceAssemblies"], "1.4.8.119303")
         self.assertEqual(packages["Lib.Harmony"], "2.4.2")
         self.assertIn("Microsoft.NETFramework.ReferenceAssemblies", packages)
-        self.assertEqual(root.findtext(".//Version"), "1.0.2")
-        self.assertEqual(root.findtext(".//AssemblyVersion"), "1.0.2.0")
-        self.assertEqual(root.findtext(".//FileVersion"), "1.0.2.0")
+        self.assertEqual(root.findtext(".//Version"), "1.0.3")
+        self.assertEqual(root.findtext(".//AssemblyVersion"), "1.0.3.0")
+        self.assertEqual(root.findtext(".//FileVersion"), "1.0.3.0")
 
     def test_project_does_not_reference_rot_or_local_game_dlls(self):
         text = PROJECT.read_text(encoding="utf-8")
@@ -36,10 +36,10 @@ class RepoContractTests(unittest.TestCase):
         self.assertNotIn("TaleWorlds.MountAndBlade.dll", text)
         self.assertNotRegex(text, r"<Reference\s+Include=")
 
-    def test_submodule_identity_and_version_are_v102(self):
+    def test_submodule_identity_and_version_are_v103(self):
         root = ET.parse(SUBMODULE).getroot()
         self.assertEqual(root.find("./Id").attrib["value"], "RoTElephantThreadFix")
-        self.assertEqual(root.find("./Version").attrib["value"], "v1.0.2")
+        self.assertEqual(root.find("./Version").attrib["value"], "v1.0.3")
         dll = root.find(".//DLLName").attrib["value"]
         self.assertEqual(dll, "RoTElephantThreadFix.dll")
 
@@ -60,7 +60,7 @@ class RepoContractTests(unittest.TestCase):
         for required in (
             "Bannerlord v1.4.8.119303",
             "RoTElephantThreadFix.dll",
-            "RoTElephantThreadFix_v1.0.2.zip",
+            "RoTElephantThreadFix_v1.0.3.zip",
             "AfterAsyncTickTick",
             "in-game",
             "Modules\\RoTElephantThreadFix",
@@ -79,8 +79,8 @@ class RepoContractTests(unittest.TestCase):
             "actions/upload-artifact@v4",
             "RoTElephantThreadFix.dll",
             "tests/BehaviorHarness/BehaviorHarness.csproj",
-            "RoTElephantThreadFix_v1.0.2.zip",
-            "RoTElephantThreadFix-v1.0.2",
+            "RoTElephantThreadFix_v1.0.3.zip",
+            "RoTElephantThreadFix-v1.0.3",
         ):
             self.assertIn(required, text)
         self.assertRegex(text, re.compile(r"configuration\s*:\s*Release", re.IGNORECASE))

@@ -13,7 +13,7 @@ class PackageModuleTests(unittest.TestCase):
             root = Path(temp)
             dll = root / "RoTElephantThreadFix.dll"
             submodule = root / "SubModule.xml"
-            output = root / "RoTElephantThreadFix_v1.0.2.zip"
+            output = root / "RoTElephantThreadFix_v1.0.3.zip"
             dll.write_bytes(b"MZ-test-dll")
             submodule.write_text("<Module />", encoding="utf-8")
 

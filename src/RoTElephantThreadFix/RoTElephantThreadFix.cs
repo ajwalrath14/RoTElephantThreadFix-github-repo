@@ -1,26 +1,55 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using TaleWorlds.Core;
 using TaleWorlds.MountAndBlade;
 
 namespace RoTElephantThreadFix
 {
     public sealed class SubModule : MBSubModuleBase
     {
+        private const string HarmonyId = "austin.rot.elephant.threadfix";
         private static Harmony _harmony;
 
-        protected override void OnSubModuleLoad()
+        public override void OnGameInitializationFinished(Game game)
         {
-            base.OnSubModuleLoad();
+            base.OnGameInitializationFinished(game);
 
             if (_harmony != null)
                 return;
 
-            _harmony = new Harmony("austin.rot.elephant.threadfix");
-            _harmony.PatchAll(Assembly.GetExecutingAssembly());
+            Harmony harmony = new Harmony(HarmonyId);
+
+            try
+            {
+                harmony.PatchAll(Assembly.GetExecutingAssembly());
+                DeferredElephantBlows.StartAccepting();
+                _harmony = harmony;
+            }
+            catch
+            {
+                DeferredElephantBlows.StopAcceptingAndClear();
+                harmony.UnpatchAll(HarmonyId);
+                throw;
+            }
+        }
+
+        public override void OnGameEnd(Game game)
+        {
+            try
+            {
+                DeferredElephantBlows.StopAcceptingAndClear();
+
+                if (_harmony != null)
+                    _harmony.UnpatchAll(HarmonyId);
+            }
+            finally
+            {
+                _harmony = null;
+                base.OnGameEnd(game);
+            }
         }
 
         protected override void AfterAsyncTickTick(float dt)
@@ -39,8 +68,28 @@ namespace RoTElephantThreadFix
 
     internal static class DeferredElephantBlows
     {
-        private static readonly ConcurrentQueue<PendingBlow> Queue =
-            new ConcurrentQueue<PendingBlow>();
+        private static readonly object LifecycleSync = new object();
+        private static readonly Queue<PendingBlow> Queue =
+            new Queue<PendingBlow>();
+        private static bool _accepting;
+
+        public static void StartAccepting()
+        {
+            lock (LifecycleSync)
+            {
+                Queue.Clear();
+                _accepting = true;
+            }
+        }
+
+        public static void StopAcceptingAndClear()
+        {
+            lock (LifecycleSync)
+            {
+                _accepting = false;
+                Queue.Clear();
+            }
+        }
 
         // This static method deliberately has the same evaluation-stack shape
         // as: victim.RegisterBlow(blow, ref/in collisionData)
@@ -58,15 +107,40 @@ namespace RoTElephantThreadFix
             pending.Blow = blow;
             pending.CollisionData = collisionData;
 
-            Queue.Enqueue(pending);
+            lock (LifecycleSync)
+            {
+                if (!_accepting)
+                    return;
+
+                Queue.Enqueue(pending);
+            }
         }
 
         public static void Flush()
         {
-            Mission currentMission = Mission.Current;
-            PendingBlow pending;
+            PendingBlow[] pendingBlows;
 
-            while (Queue.TryDequeue(out pending))
+            lock (LifecycleSync)
+            {
+                if (!_accepting)
+                {
+                    Queue.Clear();
+                    return;
+                }
+
+                if (Queue.Count == 0)
+                    return;
+
+                pendingBlows = Queue.ToArray();
+                Queue.Clear();
+            }
+
+            // Bannerlord serializes this post-agent flush with OnGameEnd on the
+            // game thread. Keep engine callbacks outside LifecycleSync so they
+            // cannot invert this queue's lock through mission behavior code.
+            Mission currentMission = Mission.Current;
+
+            foreach (PendingBlow pending in pendingBlows)
             {
                 if (currentMission == null ||
                     !ReferenceEquals(pending.SourceMission, currentMission))

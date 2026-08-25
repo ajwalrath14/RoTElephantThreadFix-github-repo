@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading;
 
 namespace HarmonyLib
 {
@@ -10,8 +11,52 @@ namespace HarmonyLib
 
     public sealed class Harmony
     {
-        public Harmony(string id) { }
-        public void PatchAll(Assembly assembly) { }
+        private static readonly HashSet<string> ActiveOwnerIds =
+            new HashSet<string>();
+
+        private readonly string _id;
+
+        public static int PatchAllCalls { get; private set; }
+        public static int UnpatchAllCalls { get; private set; }
+        public static string LastUnpatchId { get; private set; }
+        public static bool ThrowAfterPatchBegins { get; set; }
+
+        public Harmony(string id)
+        {
+            _id = id;
+        }
+
+        public static void ResetTracking()
+        {
+            PatchAllCalls = 0;
+            UnpatchAllCalls = 0;
+            LastUnpatchId = null;
+        }
+
+        public void PatchAll(Assembly assembly)
+        {
+            PatchAllCalls++;
+            ActiveOwnerIds.Add(_id);
+
+            if (ThrowAfterPatchBegins)
+                throw new InvalidOperationException("Simulated partial patch failure");
+        }
+
+        public void UnpatchAll(string harmonyId = null)
+        {
+            UnpatchAllCalls++;
+            LastUnpatchId = harmonyId;
+
+            if (harmonyId == null)
+                ActiveOwnerIds.Clear();
+            else
+                ActiveOwnerIds.Remove(harmonyId);
+        }
+
+        public static bool IsOwnerPatched(string harmonyId)
+        {
+            return ActiveOwnerIds.Contains(harmonyId);
+        }
     }
 
     public static class AccessTools
@@ -49,11 +94,19 @@ namespace HarmonyLib
     }
 }
 
+namespace TaleWorlds.Core
+{
+    public sealed class Game { }
+}
+
 namespace TaleWorlds.MountAndBlade
 {
     public abstract class MBSubModuleBase
     {
         protected virtual void OnSubModuleLoad() { }
+        public virtual void OnGameInitializationFinished(
+            TaleWorlds.Core.Game game) { }
+        public virtual void OnGameEnd(TaleWorlds.Core.Game game) { }
         protected virtual void AfterAsyncTickTick(float dt) { }
     }
 
@@ -67,7 +120,29 @@ namespace TaleWorlds.MountAndBlade
 
     public sealed class Agent
     {
-        public Mission Mission { get; set; }
+        private Mission _mission;
+
+        public ManualResetEventSlim MissionReadEntered { get; set; }
+        public ManualResetEventSlim AllowMissionRead { get; set; }
+
+        public Mission Mission
+        {
+            get
+            {
+                if (MissionReadEntered != null)
+                    MissionReadEntered.Set();
+
+                if (AllowMissionRead != null &&
+                    !AllowMissionRead.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException(
+                        "Timed out waiting to release the Mission getter.");
+                }
+
+                return _mission;
+            }
+            set { _mission = value; }
+        }
         public bool Active { get; set; }
         public bool ThrowWhenActivityIsRead { get; set; }
         public int ActivityReads { get; private set; }
