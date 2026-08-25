@@ -1,0 +1,76 @@
+name: Build RoT Elephant Thread Fix
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CONFIGURATION: Release
+  PROJECT: src/RoTElephantThreadFix/RoTElephantThreadFix.csproj
+  DLL_PATH: src/RoTElephantThreadFix/bin/Release/net472/RoTElephantThreadFix.dll
+  ZIP_PATH: dist/RoTElephantThreadFix_v1.0.1.zip
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test repository and packager
+        run: python -m unittest discover -s tests -v
+
+      - name: Restore
+        run: dotnet restore "$PROJECT"
+
+      - name: Build DLL
+        run: dotnet build "$PROJECT" --configuration Release --no-restore
+
+      - name: Verify DLL
+        shell: bash
+        run: |
+          test -f "$DLL_PATH"
+          test -s "$DLL_PATH"
+          ls -lh "$DLL_PATH"
+
+      - name: Package Bannerlord module
+        run: >-
+          python scripts/package_module.py
+          --dll "$DLL_PATH"
+          --submodule module/SubModule.xml
+          --output "$ZIP_PATH"
+
+      - name: Stage raw DLL
+        shell: bash
+        run: cp "$DLL_PATH" RoTElephantThreadFix.dll
+
+      - name: Upload compiled DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoTElephantThreadFix-DLL
+          path: RoTElephantThreadFix.dll
+          if-no-files-found: error
+
+      - name: Upload install-ready module
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoTElephantThreadFix-v1.0.1
+          path: ${{ env.ZIP_PATH }}
+          if-no-files-found: error
