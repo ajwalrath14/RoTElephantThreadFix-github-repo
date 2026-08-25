@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Module>
+  <Name value="RoT Elephant Thread Fix"/>
+  <Id value="RoTElephantThreadFix"/>
+  <Version value="v1.0.1"/>
+  <DefaultModule value="false"/>
+  <ModuleCategory value="Singleplayer"/>
+  <ModuleType value="Community"/>
+
+  <DependedModules>
+    <DependedModule Id="Bannerlord.Harmony"/>
+    <DependedModule Id="Native"/>
+    <DependedModule Id="SandBoxCore"/>
+    <DependedModule Id="Sandbox"/>
+    <DependedModule Id="StoryMode"/>
+    <DependedModule Id="ROT-Core"/>
+  </DependedModules>
+
+  <SubModules>
+    <SubModule>
+      <Name value="RoT Elephant Thread Fix"/>
+      <DLLName value="RoTElephantThreadFix.dll"/>
+      <SubModuleClassType value="RoTElephantThreadFix.SubModule"/>
+      <Tags/>
+    </SubModule>
+  </SubModules>
+</Module>
